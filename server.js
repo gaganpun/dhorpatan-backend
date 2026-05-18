@@ -1,4 +1,5 @@
 const express = require("express");
+const pool = require("./db");
 const mongoose = require("mongoose");
 const cors = require("cors");
 require("dotenv").config();
@@ -6,19 +7,24 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Routes
 const adminRoutes = require("./routes/adminRoutes");
 const authRoutes = require("./routes/authRoutes");
+const authMiddleware = require("./middleware/authMiddleware");
 
 app.use("/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
 
+// Models
 const Contact = require("./models/ContactModel");
 const Join = require("./models/JoinModel");
 
+// CONTACT API
 app.post("/api/contact", async (req, res) => {
   try {
     const { name, email, message } = req.body;
@@ -35,6 +41,7 @@ app.post("/api/contact", async (req, res) => {
   }
 });
 
+// JOIN API
 app.post("/api/join", async (req, res) => {
   try {
     const { firstName, lastName, phone, email, jerseySize } = req.body;
@@ -57,17 +64,7 @@ app.post("/api/join", async (req, res) => {
   }
 });
 
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("❌ MongoDB error:", err));
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
-
-const authMiddleware = require("./middleware/authMiddleware");
-
+// 🔐 PROTECTED ADMIN DASHBOARD
 app.get("/api/admin/dashboard", authMiddleware, (req, res) => {
   res.json({
     message: "Welcome Admin",
@@ -75,7 +72,29 @@ app.get("/api/admin/dashboard", authMiddleware, (req, res) => {
       club: "Dhorpatan Club Australia",
       members: 120,
       events: 5,
-      notices: ["Match on Sunday", "Training at 6PM"],
+      notices: [
+        "Match on Sunday",
+        "Training at 6PM"
+      ],
     },
   });
+});
+
+// MongoDB
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch((err) => console.error("❌ MongoDB error:", err));
+
+// START SERVER (LAST LINE ALWAYS)
+pool.query("SELECT NOW()", (err, res) => {
+  if (err) {
+    console.error("Database connection error:", err);
+  } else {
+    console.log("PostgreSQL connected:", res.rows);
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
