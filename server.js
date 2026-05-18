@@ -1,6 +1,5 @@
 const express = require("express");
 const pool = require("./db");
-const mongoose = require("mongoose");
 const cors = require("cors");
 require("dotenv").config();
 
@@ -12,7 +11,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Routes
+// Routes (keep your existing ones if needed)
 const adminRoutes = require("./routes/adminRoutes");
 const authRoutes = require("./routes/authRoutes");
 const authMiddleware = require("./middleware/authMiddleware");
@@ -20,11 +19,9 @@ const authMiddleware = require("./middleware/authMiddleware");
 app.use("/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
 
-// Models
-const Contact = require("./models/ContactModel");
-const Join = require("./models/JoinModel");
-
-// CONTACT API
+/* -----------------------------
+   POSTGRESQL: CONTACT API
+------------------------------*/
 app.post("/api/contact", async (req, res) => {
   try {
     const { name, email, message } = req.body;
@@ -33,15 +30,30 @@ app.post("/api/contact", async (req, res) => {
       return res.status(400).json({ message: "All fields required" });
     }
 
-    const data = await Contact.create({ name, email, message });
+    const firstName = name.split(" ")[0] || "";
+    const lastName = name.split(" ")[1] || "";
 
-    res.status(201).json({ message: "Contact saved", data });
+    const result = await pool.query(
+      `INSERT INTO contact_messages 
+      (first_name, last_name, full_name, email, message)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *`,
+      [firstName, lastName, name, email, message]
+    );
+
+    res.status(201).json({
+      message: "Contact saved successfully",
+      data: result.rows[0],
+    });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: err.message });
   }
 });
 
-// JOIN API
+/* -----------------------------
+   POSTGRESQL: JOIN API
+------------------------------*/
 app.post("/api/join", async (req, res) => {
   try {
     const { firstName, lastName, phone, email, jerseySize } = req.body;
@@ -50,21 +62,27 @@ app.post("/api/join", async (req, res) => {
       return res.status(400).json({ message: "All fields required" });
     }
 
-    const data = await Join.create({
-      firstName,
-      lastName,
-      phone,
-      email,
-      jerseySize,
-    });
+    const result = await pool.query(
+      `INSERT INTO members 
+      (first_name, last_name, phone, email, jersey_size)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *`,
+      [firstName, lastName, phone, email, jerseySize]
+    );
 
-    res.status(201).json({ message: "Join saved", data });
+    res.status(201).json({
+      message: "Member registered successfully",
+      data: result.rows[0],
+    });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: err.message });
   }
 });
 
-// 🔐 PROTECTED ADMIN DASHBOARD
+/* -----------------------------
+   ADMIN DASHBOARD (STATIC)
+------------------------------*/
 app.get("/api/admin/dashboard", authMiddleware, (req, res) => {
   res.json({
     message: "Welcome Admin",
@@ -72,29 +90,25 @@ app.get("/api/admin/dashboard", authMiddleware, (req, res) => {
       club: "Dhorpatan Club Australia",
       members: 120,
       events: 5,
-      notices: [
-        "Match on Sunday",
-        "Training at 6PM"
-      ],
+      notices: ["Match on Sunday", "Training at 6PM"],
     },
   });
 });
 
-// MongoDB
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("❌ MongoDB error:", err));
-
-// START SERVER (LAST LINE ALWAYS)
-pool.query("SELECT NOW()", (err, res) => {
+/* -----------------------------
+   POSTGRES CONNECTION TEST
+------------------------------*/
+pool.query("SELECT NOW()", (err, result) => {
   if (err) {
-    console.error("Database connection error:", err);
+    console.error("❌ PostgreSQL connection error:", err.message);
   } else {
-    console.log("PostgreSQL connected:", res.rows);
+    console.log("✅ PostgreSQL connected:", result.rows[0]);
   }
 });
 
+/* -----------------------------
+   START SERVER
+------------------------------*/
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
