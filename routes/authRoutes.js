@@ -1,48 +1,146 @@
 const express = require("express");
-const bcrypt = require("bcryptjs");
+const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+const pool = require("../db");
 
 const router = express.Router();
 
-const SECRET = "dhorpatan_secret_key"; // later move to .env
+const SECRET = "dhorpatan_secret_key";
 
-// REGISTER
+/* --------------------------------
+   REGISTER ADMIN
+-------------------------------- */
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      confirmPassword,
+    } = req.body;
 
-    const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ message: "User exists" });
+    // Validation
+    if (
+      !firstName ||
+      !lastName ||
+      !email ||
+      !password ||
+      !confirmPassword
+    ) {
+      return res.status(400).json({
+        message: "All fields required",
+      });
+    }
 
-    const hashed = await bcrypt.hash(password, 10);
+    // Password match check
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        message: "Passwords do not match",
+      });
+    }
 
-    const user = await User.create({ name, email, password: hashed });
+    // Check existing admin
+    const existingAdmin = await pool.query(
+      "SELECT * FROM admins WHERE email = $1",
+      [email]
+    );
 
-    const token = jwt.sign({ id: user._id }, SECRET, { expiresIn: "1d" });
+    if (existingAdmin.rows.length > 0) {
+      return res.status(400).json({
+        message: "Admin already exists",
+      });
+    }
 
-    res.json({ message: "Registered", token });
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Insert admin
+    const result = await pool.query(
+      `INSERT INTO admins
+      (first_name, last_name, email, password_hash)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, first_name, last_name, email`,
+      [firstName, lastName, email, hashedPassword]
+    );
+
+    // Create token
+    const token = jwt.sign(
+      { id: result.rows[0].id },
+      SECRET,
+      { expiresIn: "1d" }
+    );
+
+    res.status(201).json({
+      message: "Admin registered successfully",
+      token,
+      admin: result.rows[0],
+    });
+
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error(err);
+    res.status(500).json({
+      message: "Server error",
+    });
   }
 });
 
-// LOGIN
+/* --------------------------------
+   LOGIN ADMIN
+-------------------------------- */
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: "User not found" });
+    // Find admin
+    const result = await pool.query(
+      "SELECT * FROM admins WHERE email = $1",
+      [email]
+    );
 
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(400).json({ message: "Invalid password" });
+    if (result.rows.length === 0) {
+      return res.status(400).json({
+        message: "Admin not found",
+      });
+    }
 
-    const token = jwt.sign({ id: user._id }, SECRET, { expiresIn: "1d" });
+    const admin = result.rows[0];
 
-    res.json({ message: "Login success", token });
+    // Compare password
+    const match = await bcrypt.compare(
+      password,
+      admin.password_hash
+    );
+
+    if (!match) {
+      return res.status(400).json({
+        message: "Invalid password",
+      });
+    }
+
+    // Create JWT
+    const token = jwt.sign(
+      { id: admin.id },
+      SECRET,
+      { expiresIn: "1d" }
+    );
+
+    res.json({
+      message: "Login successful",
+      token,
+      admin: {
+        id: admin.id,
+        firstName: admin.first_name,
+        lastName: admin.last_name,
+        email: admin.email,
+      },
+    });
+
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error(err);
+    res.status(500).json({
+      message: "Server error",
+    });
   }
 });
 
