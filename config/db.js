@@ -1,11 +1,23 @@
-﻿const mongoose = require("mongoose");
+﻿const { Pool } = require("pg");
 
-async function connectDB() {
-  if (!process.env.MONGO_URI) {
-    throw new Error("MONGO_URI missing in .env");
-  }
-  await mongoose.connect(process.env.MONGO_URI);
-  console.log("✅ MongoDB connected:", mongoose.connection.host);
-}
+const connectionString = process.env.DATABASE_URL;
 
-module.exports = connectDB;
+console.log("DATABASE_URL:", connectionString);
+
+const pool = new Pool({
+  connectionString,
+  ssl: {
+    rejectUnauthorized: false,
+  },
+});
+
+pool.connect()
+  .then(() => {
+    console.log("✅ PostgreSQL connected");
+  })
+  .catch((err) => {
+    console.error("❌ FULL DB ERROR:");
+    console.error(err);
+  });
+
+module.exports = pool;
